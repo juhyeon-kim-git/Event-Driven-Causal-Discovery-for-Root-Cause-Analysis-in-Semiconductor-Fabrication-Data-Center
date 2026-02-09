@@ -37,14 +37,14 @@ pip install torch pandas numpy scipy scikit-learn matplotlib seaborn
 
 ### 2. Run Single Experiment
 
-#### Option A: THP with Perturbation
+#### THP
 ```bash
-python3 train_thp.py --nodes 5 --seed 0 --epoch 10 --threshold 0.005
+python3 train_thp.py
 ```
 
-#### Option B: Diffusion + Granger Causality (Recommended)
+#### Ours
 ```bash
-python3 train_structural_diffusion.py --nodes 5 --seed 0 --epoch 150 --significance 0.10
+python3 train_structural_diffusion.py
 ```
 
 ### 3. Run Batch Experiments
@@ -54,15 +54,8 @@ bash run_structural.sh [DATA_DIR] [OUTPUT_DIR]
 
 Example:
 ```bash
-bash run_structural.sh /home/s2/juhyeonkim/samsung4/data ./results_thp_g3
+bash run_structural.sh
 ```
-
-This will:
-- Run experiments on all sizes (5, 10, 20, 30)
-- Execute 20 runs per size with different seeds (0-19)
-- Save results to `OUTPUT_DIR/size{N}_results.csv`
-- Generate summary statistics in `OUTPUT_DIR/size{N}_summary.txt`
-- Create overall summary in `OUTPUT_DIR/overall_summary.csv`
 
 ## Method Details
 
@@ -78,13 +71,6 @@ For each potential edge \( X \rightarrow Y \):
 2. Compute likelihood of Y WITHOUT X events (masked)
 3. Statistical test: If likelihood significantly improves with X, edge exists
 
-**Criteria** (relaxed for better recall):
-- Strong evidence: \( p < 0.05 \) AND Cohen's \( d > 0.3 \), OR Cohen's \( d > 0.8 \)
-- Moderate evidence: \( p < 0.1 \) AND Cohen's \( d > 0.5 \) AND score \( > \) adaptive threshold
-- Weak evidence: \( p < 0.05 \) AND score \( > 1.5 \times \) adaptive threshold
-
-### Ensemble Testing
-The method runs multiple tests with different random seeds and keeps edges that appear in majority of runs (≥2 out of 3).
 
 ## Output Format
 
