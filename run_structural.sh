@@ -1,11 +1,4 @@
 #!/usr/bin/env bash
-#SBATCH --job-name=ours
-#SBATCH --nodes=1
-#SBATCH --gres=gpu:4
-#SBATCH --time=unlimited
-#SBATCH --mem=100GB
-#SBATCH --partition=viba1
-#SBATCH --cpus-per-task=4
 
 # Color codes
 RED='\033[0;31m'
@@ -16,7 +9,7 @@ NC='\033[0m'
 
 # Configuration
 DATA_DIR="${1:-./data}"
-OUTPUT_DIR="${2:-./results_thp_g3}"
+OUTPUT_DIR="${2:-./results_thp}"
 SIZES=(5 10 20 30)
 NUM_RUNS=20
 START_SEED=0
