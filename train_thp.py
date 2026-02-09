@@ -10,7 +10,7 @@ import random
 import time
 
 # ==========================================
-# 0. 설정 및 유틸리티
+# 0. Configuration and Utilities
 # ==========================================
 def set_seed(seed):
     random.seed(seed)
@@ -43,7 +43,7 @@ def calculate_metrics(pred_matrix, gt_matrix, threshold=0.0):
     return precision, recall, f1, shd, nhd
 
 # ==========================================
-# 1. 데이터 처리
+# 1. Data Processing
 # ==========================================
 def load_data(file_path_data, file_path_answer):
     if not os.path.exists(file_path_data):
@@ -87,7 +87,7 @@ def process_sequences(df):
     return data_list, len(event_types)
 
 # ==========================================
-# 2. 모델 정의 (수정됨)
+# 2. Model Definition (Modified)
 # ==========================================
 class ConditionalDiffusion(nn.Module):
     def __init__(self, num_event_types, hidden_dim=64, num_steps=50):
@@ -134,21 +134,19 @@ class ConditionalDiffusion(nn.Module):
         condition = self.get_condition_embedding(event_seq, dt_seq)
         t = torch.randint(0, self.num_steps, (batch_size,), device=device).long()
         
-        # [핵심 수정] target_dt와 noise의 차원을 (Batch, 1)로 강제 통일
+        # Ensure target_dt and noise have dimension (Batch, 1)
         if target_dt.dim() == 1:
-            target_dt = target_dt.unsqueeze(-1) # (Batch) -> (Batch, 1)
+            target_dt = target_dt.unsqueeze(-1)
             
-        noise = torch.randn_like(target_dt) # (Batch, 1)
+        noise = torch.randn_like(target_dt)
         
         alpha_bar_t = self.alphas_bar.to(device)[t].unsqueeze(-1)
         
         x_0 = target_dt
-        # 이제 x_0와 noise의 차원이 같으므로 Broadcasting 문제가 발생하지 않음
         x_t = torch.sqrt(alpha_bar_t) * x_0 + torch.sqrt(1 - alpha_bar_t) * noise
         
         t_emb = self.time_embed(t.float().unsqueeze(-1))
         
-        # Concatenate: (B, 1) + (B, 64) + (B, 64) = (B, 129)
         net_in = torch.cat([x_t, t_emb, condition], dim=-1)
         
         pred_noise = self.denoise_mlp(net_in)
@@ -165,7 +163,7 @@ class ConditionalDiffusion(nn.Module):
         return np.mean(losses)
 
 # ==========================================
-# 3. 메인 함수
+# 3. Main Function
 # ==========================================
 def main():
     parser = argparse.ArgumentParser()
@@ -186,12 +184,10 @@ def main():
     answer_file = f"/users/PAS1289/juhyeonkim/samsung2/data/samsung_csv/graph_adj.csv"
     
     try:
-        # 1. 데이터 로드
         df_raw, gt_matrix = load_data(data_file, answer_file)
         data_list, num_events = process_sequences(df_raw)
         
         print("Converting data to tensors...", flush=True)
-        # 리스트 -> 넘파이 -> 텐서 변환 (속도 최적화)
         all_evts = torch.tensor(np.array([d[0] for d in data_list]), dtype=torch.long).to(device)
         all_dts = torch.tensor(np.array([d[1] for d in data_list]), dtype=torch.float32).to(device)
         target_dts = torch.tensor(np.array([d[2] for d in data_list]), dtype=torch.float32).to(device)
@@ -200,7 +196,7 @@ def main():
         dataset = torch.utils.data.TensorDataset(all_evts, all_dts, target_dts)
         dataloader = torch.utils.data.DataLoader(dataset, batch_size=64, shuffle=True)
         
-        # 2. 모델 학습
+        # 2. Train model
         model = ConditionalDiffusion(num_event_types=num_events).to(device)
         optimizer = optim.Adam(model.parameters(), lr=0.001)
         
@@ -220,18 +216,16 @@ def main():
             elapsed = time.time() - start_time
             print(f"Epoch {e+1}/{args.epoch} | Loss: {epoch_loss:.4f} | Time: {elapsed:.1f}s", flush=True)
 
-        # 3. 인과관계 분석 (Perturbation)
+        # 3. Causality analysis using perturbation
         print("Analyzing Causality (Perturbation)...", flush=True)
         base_losses = np.zeros(num_events)
         counts = np.zeros(num_events)
         
         model.eval()
         
-        # 순차 처리 (GPU 활용)
         with torch.no_grad():
             for i in range(len(all_evts)):
                 tgt_type = target_types[i].item()
-                # 차원 통일을 위해 unsqueeze는 forward 내부에서 처리됨
                 loss = model(all_evts[i:i+1], all_dts[i:i+1], target_dts[i:i+1]).item()
                 base_losses[tgt_type] += loss
                 counts[tgt_type] += 1

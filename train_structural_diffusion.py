@@ -11,7 +11,7 @@ import time
 from itertools import combinations
 
 # ==========================================
-# 0. 유틸리티 및 설정
+# 0. Utilities and Configuration
 # ==========================================
 def set_seed(seed):
     random.seed(seed)
@@ -44,7 +44,7 @@ def calculate_metrics(pred_matrix, gt_matrix, threshold=0.1):
     return precision, recall, f1, shd, nhd
 
 # ==========================================
-# 1. 데이터 처리 (Long Horizon 대응)
+# 1. Data Processing (Long Horizon Support)
 # ==========================================
 def load_data(file_path_data, file_path_answer):
     if not os.path.exists(file_path_data):
@@ -63,7 +63,7 @@ def load_data(file_path_data, file_path_answer):
         gt_matrix = np.zeros((5, 5))
     return df, gt_matrix
 
-def process_sequences(df, seq_len=100):  # Longer horizon
+def process_sequences(df, seq_len=100):
     """
     Process with long horizons and irregular timestamps
     """
@@ -72,7 +72,6 @@ def process_sequences(df, seq_len=100):  # Longer horizon
     event2idx = {e: i for i, e in enumerate(event_types)}
     df['event_idx'] = df['event_type'].map(event2idx)
     
-    # 시간 간격 정규화 (improved for better stability)
     time_deltas = df['time_stamp'].diff().fillna(1.0).values
     
     # Remove outliers using IQR method before normalization
@@ -265,9 +264,9 @@ class DiffusionLikelihoodEstimator(nn.Module):
 
 # def granger_causality_test(model, dataloader, num_event_types, device, 
 #                                    significance_level=0.05, 
-#                                    num_likelihood_samples=50,  # 증가
-#                                    use_adaptive_threshold=True,  # 추가
-#                                    top_k_percent=0.3):  # 추가
+#                                    num_likelihood_samples=50,
+#                                    use_adaptive_threshold=True,
+#                                    top_k_percent=0.3):
 #     """
 #     Improved Granger causality test with adaptive thresholding
 #     """
@@ -513,13 +512,13 @@ def granger_causality_test_fast(model, dataloader, num_event_types, device,
                                 num_likelihood_samples=100,
                                 min_support=10):
     """
-    안전하고 빠른 버전 with effect size criterion and minimum support
+    Safe and fast version with effect size criterion and minimum support
     """
     print("Stage 2: Safe Granger Causality Testing...", flush=True)
     
     model.eval()
     
-    # Step 1: 모든 데이터 수집
+    # Step 1: Collect all data
     print("  Collecting data...", flush=True)
     all_event_seq = []
     all_dt_seq = []
@@ -533,7 +532,6 @@ def granger_causality_test_fast(model, dataloader, num_event_types, device,
         all_target_dt.append(target_dt)
         all_target_types.append(target_types)
     
-    # 안전하게 concatenate
     if len(all_event_seq) == 0:
         print("  WARNING: No data found!", flush=True)
         return np.zeros((num_event_types, num_event_types))
@@ -548,7 +546,7 @@ def granger_causality_test_fast(model, dataloader, num_event_types, device,
     causality_scores = np.zeros((num_event_types, num_event_types))
     p_values = np.ones((num_event_types, num_event_types))
     
-    # Step 2: Target별로 처리
+    # Step 2: Process by target
     for target_type in range(num_event_types):
         print(f"  Processing target={target_type}", flush=True)
         
@@ -564,7 +562,7 @@ def granger_causality_test_fast(model, dataloader, num_event_types, device,
         t_dt_seq = full_dt_seq[target_mask]
         t_target_dt = full_target_dt[target_mask]
         
-        # Compute baseline likelihood (WITH all events) - 배치 처리
+        # Compute baseline likelihood (WITH all events) - batch processing
         batch_size = 128
         ll_with_all = []
         
@@ -600,7 +598,7 @@ def granger_causality_test_fast(model, dataloader, num_event_types, device,
             rel_target_dt = t_target_dt[source_appears]
             rel_ll_with = ll_with_all[source_appears.cpu().numpy()]
             
-            # Compute likelihood WITHOUT source - 배치 처리
+            # Compute likelihood WITHOUT source - batch processing
             ll_without_list = []
             
             for i in range(0, len(rel_event_seq), batch_size):
@@ -633,7 +631,7 @@ def granger_causality_test_fast(model, dataloader, num_event_types, device,
                     std_improvement = improvement.std() + 1e-8
                     cohens_d = mean_improvement / std_improvement
                     
-                    # 안전한 값 체크
+                    # Check for safe values
                     if np.isnan(mean_improvement) or np.isinf(mean_improvement):
                         mean_improvement = 0
                     if np.isnan(p_val) or np.isinf(p_val):
@@ -645,7 +643,6 @@ def granger_causality_test_fast(model, dataloader, num_event_types, device,
                     causality_scores[source_type, target_type] = mean_improvement
                     p_values[source_type, target_type] = p_val
                     
-                    # Store effect size for later use (we'll use it in the threshold logic)
                     if not hasattr(granger_causality_test_fast, 'effect_sizes'):
                         granger_causality_test_fast.effect_sizes = {}
                     granger_causality_test_fast.effect_sizes[(source_type, target_type)] = cohens_d
@@ -722,7 +719,7 @@ def granger_causality_test_multi_gpu(model, dataloader, num_event_types, device,
 
 
 # ==========================================
-# 4. 메인 함수
+# 4. Main Function
 # ==========================================
 def main():
     parser = argparse.ArgumentParser()
@@ -755,7 +752,7 @@ def main():
         target_dts = torch.tensor(np.array([d[2] for d in data_list]), dtype=torch.float32)
         target_types = torch.tensor(np.array([d[3] for d in data_list]), dtype=torch.long)
         
-        # NaN/Inf 체크
+        # Check for NaN/Inf
         if torch.isnan(all_dts).any() or torch.isinf(all_dts).any():
             print("WARNING: NaN/Inf in time deltas, replacing...", flush=True)
             all_dts = torch.nan_to_num(all_dts, nan=0.0, posinf=10.0, neginf=-10.0)
@@ -802,7 +799,7 @@ def main():
                 batch = [b.to(device) for b in batch]
                 loss = model(batch[0], batch[1], batch[2])
                 
-                # NaN 체크
+                # Check for NaN
                 if torch.isnan(loss) or torch.isinf(loss):
                     print(f"  WARNING: NaN/Inf loss at epoch {e+1}, skipping batch", flush=True)
                     continue
@@ -881,7 +878,7 @@ def main():
         causality_matrix = causality_matrix[:min_dim, :min_dim]
         gt_matrix = gt_matrix[:min_dim, :min_dim]
         
-        # NaN/Inf 체크
+        # Check for NaN/Inf
         if np.isnan(causality_matrix).any() or np.isinf(causality_matrix).any():
             print("WARNING: NaN/Inf in causality matrix, cleaning...", flush=True)
             causality_matrix = np.nan_to_num(causality_matrix, nan=0.0, posinf=0.0, neginf=0.0)
