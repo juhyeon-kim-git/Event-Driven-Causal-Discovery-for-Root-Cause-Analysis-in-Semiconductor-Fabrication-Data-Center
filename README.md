@@ -21,6 +21,7 @@ This bundle implements:
 ### Data Files
 - `synthetic_event_sequence_hawkes_{5,10,20,30}.csv`: Synthetic Hawkes event sequences with different sizes (D=5,10,20,30)
 - `synth_{5,10,20,30}_answer.csv`: Ground truth adjacency matrices
+- `semiconductor_event.csv`: Real-world semiconductor dataset
 
 ### Automation
 - `run_structural.sh`: Batch experiment runner for multiple sizes and seeds
