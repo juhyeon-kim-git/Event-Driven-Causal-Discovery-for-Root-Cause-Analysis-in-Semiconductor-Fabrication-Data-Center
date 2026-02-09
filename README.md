@@ -16,7 +16,6 @@ This bundle implements:
 - `train_thp.py`: Trains THP model with perturbation-based causality analysis
 - `train_structural_diffusion.py`: Trains diffusion-based likelihood estimator with Granger causality testing
 - `thp.py`: Basic THP model implementation (educational/demo version)
-- `threshold.py`: Utility script for thresholding and binarizing adjacency matrices
 
 ### Data Files
 - `synthetic_event_sequence_hawkes_{5,10,20,30}.csv`: Synthetic Hawkes event sequences with different sizes (D=5,10,20,30)
@@ -25,9 +24,6 @@ This bundle implements:
 
 ### Automation
 - `run_structural.sh`: Batch experiment runner for multiple sizes and seeds
-
-### Outputs
-- `figures/`: Visualization results (heatmaps, bar charts)
 
 ## Quick Start
 
