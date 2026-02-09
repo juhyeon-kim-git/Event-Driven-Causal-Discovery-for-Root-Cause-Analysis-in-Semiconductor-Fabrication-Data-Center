@@ -88,59 +88,12 @@ The method runs multiple tests with different random seeds and keeps edges that 
 
 ## Output Format
 
-### Individual Results CSV
-```csv
-seed,precision,recall,f1,shd,nhd
-0,0.8542,0.7123,0.7778,3.0000,0.0500
-1,0.9012,0.7450,0.8156,2.5000,0.0417
-...
-```
-
-### Summary Statistics
-```
-Size | Runs | Precision        | Recall           | F1 Score         | SHD              | NHD
------|------|------------------|------------------|------------------|------------------|------------------
-   5 |   20 | 0.8123 ± 0.0543 | 0.7234 ± 0.0612 | 0.7645 ± 0.0523 | 2.8500 ± 0.5124 | 0.0475 ± 0.0085
-  10 |   20 | 0.7845 ± 0.0678 | 0.6912 ± 0.0734 | 0.7342 ± 0.0612 | 8.2300 ± 1.2345 | 0.0823 ± 0.0123
-...
-```
-
-## Hyperparameters
-
 ### Key Parameters
 - `--nodes`: Number of event types (5, 10, 20, 30)
 - `--seed`: Random seed for reproducibility
 - `--epoch`: Training epochs (default: 150 for diffusion, 10 for THP)
 - `--significance`: Significance level for statistical tests (default: 0.10)
 - `--threshold`: Manual threshold for binarization (THP only, default: 0.005)
-
-### Model Architecture
-- Hidden dimension: 128
-- Attention heads: 4
-- Diffusion steps: 50
-- Learning rate: 0.001 with warmup
-- Batch size: 32
-- Sequence length: 100
-
-## Utility: Threshold Tool
-
-The `threshold.py` script can binarize any adjacency matrix:
-
-```bash
-python3 threshold.py \
-    --input learned_adj_matrix.csv \
-    --output binary_adj_matrix.csv \
-    --threshold 0.1 \
-    --abs \
-    --no-self-loop
-```
-
-Options:
-- `--threshold`: Threshold value (values ≥ threshold become 1, else 0)
-- `--abs`: Apply threshold on absolute values
-- `--no-self-loop`: Force diagonal entries to 0
-- `--header`: Input CSV has header row
-- `--eps`: Numerical epsilon for comparison
 
 ## Notes
 
@@ -149,33 +102,4 @@ Options:
 3. **GPU Usage**: Automatically uses GPU if available
 4. **Computational Cost**: Granger testing is expensive; each size/seed takes 5-30 minutes depending on hardware
 5. **Reproducibility**: Set seeds for deterministic results
-
-## Troubleshooting
-
-### NaN/Inf in Loss
-The code automatically handles NaN/Inf values through:
-- Data clipping and normalization
-- Gradient clipping (max norm = 1.0)
-- Skip batches with invalid loss
-
-### Memory Issues
-- Reduce batch size in the code
-- Use shorter sequence lengths
-- Process fewer likelihood samples
-
-### Low Recall
-- Increase `--significance` (e.g., 0.15 or 0.20)
-- Adjust min_support threshold (default: 15)
-- Increase ensemble size
-
-## Citation
-
-If you use this code, please cite:
-- Original THP paper: [Transformer Hawkes Process (2020)]
-- Granger causality framework: [Time Series Causality Testing]
-- Diffusion models: [Denoising Diffusion Probabilistic Models]
-
-## Contact
-
-For questions or issues, please contact the authors or open an issue in the repository.
 
