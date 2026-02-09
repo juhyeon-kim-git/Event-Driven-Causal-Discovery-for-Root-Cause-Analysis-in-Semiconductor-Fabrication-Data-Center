@@ -13,9 +13,10 @@ This bundle implements:
 ## Files
 
 ### Main Scripts
-- `train_thp.py`: Trains THP model with perturbation-based causality analysis
+- `train_thp.py`: Trains a THP model with perturbation-based causality analysis
 - `train_structural_diffusion.py`: Trains diffusion-based likelihood estimator with Granger causality testing
-- `thp.py`: Basic THP model implementation (educational/demo version)
+- `thp.py`: Implements a basic THP model
+
 
 ### Data Files
 - `synthetic_event_sequence_hawkes_{5,10,20,30}.csv`: Synthetic Hawkes event sequences with different sizes (D=5,10,20,30)
