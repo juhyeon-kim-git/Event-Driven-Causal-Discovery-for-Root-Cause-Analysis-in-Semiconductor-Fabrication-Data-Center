@@ -13,8 +13,8 @@ OUTPUT_DIR="${2:-./results_thp}"
 SIZES=(5 10 20 30)
 NUM_RUNS=20
 START_SEED=0
-EPOCHS=150
-SIGNIFICANCE=0.10
+EPOCHS=50
+SIGNIFICANCE=0.05
 
 # Print colored message
 print_msg() {
