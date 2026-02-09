@@ -15,7 +15,7 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 # Configuration
-DATA_DIR="${1:-/home/s2/juhyeonkim/samsung4/data}"
+DATA_DIR="${1:-./data}"
 OUTPUT_DIR="${2:-./results_thp_g3}"
 SIZES=(5 10 20 30)
 NUM_RUNS=20

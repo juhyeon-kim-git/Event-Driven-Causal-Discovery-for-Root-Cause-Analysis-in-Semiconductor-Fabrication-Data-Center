@@ -69,7 +69,7 @@ def process_sequences(df):
     df['event_idx'] = df['event_type'].map(event2idx)
     
     time_deltas = df['time_stamp'].diff().fillna(1.0).values
-    time_deltas = np.log(time_deltas + 1e-6) 
+    time_deltas = np.log(time_deltas + 1e-6)
     
     events = df['event_idx'].values
     seq_len = 20
@@ -109,7 +109,6 @@ class ConditionalDiffusion(nn.Module):
             nn.Linear(hidden_dim, hidden_dim),
         )
         
-        # Input Dim: x_t(1) + t_emb(hidden_dim) + condition(hidden_dim)
         input_dim = 1 + hidden_dim + hidden_dim
         
         self.denoise_mlp = nn.Sequential(
@@ -134,7 +133,6 @@ class ConditionalDiffusion(nn.Module):
         condition = self.get_condition_embedding(event_seq, dt_seq)
         t = torch.randint(0, self.num_steps, (batch_size,), device=device).long()
         
-        # Ensure target_dt and noise have dimension (Batch, 1)
         if target_dt.dim() == 1:
             target_dt = target_dt.unsqueeze(-1)
             
@@ -157,7 +155,7 @@ class ConditionalDiffusion(nn.Module):
         self.eval()
         with torch.no_grad():
             losses = []
-            for _ in range(3): 
+            for _ in range(3):
                 loss = self.forward(event_seq, dt_seq, target_dt)
                 losses.append(loss.item())
         return np.mean(losses)
@@ -177,11 +175,8 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using Device: {device}", flush=True)
 
-    # data_file = f"synthetic_event_sequence_hawkes_{args.nodes}.csv"
-    # answer_file = f"synth_{args.nodes}_answer.csv"
-    
-    data_file = f"/users/PAS1289/juhyeonkim/samsung2/data/samsung_csv/event.csv"
-    answer_file = f"/users/PAS1289/juhyeonkim/samsung2/data/samsung_csv/graph_adj.csv"
+    data_file = f"synthetic_event_sequence_hawkes_{args.nodes}.csv"
+    answer_file = f"synth_{args.nodes}_answer.csv"
     
     try:
         df_raw, gt_matrix = load_data(data_file, answer_file)

@@ -74,17 +74,14 @@ def process_sequences(df, seq_len=100):
     
     time_deltas = df['time_stamp'].diff().fillna(1.0).values
     
-    # Remove outliers using IQR method before normalization
     q1, q3 = np.percentile(time_deltas, [25, 75])
     iqr = q3 - q1
     lower_bound = max(q1 - 1.5 * iqr, 1e-6)
     upper_bound = q3 + 1.5 * iqr
     time_deltas = np.clip(time_deltas, lower_bound, upper_bound)
     
-    # Log transformation for stability
     time_deltas = np.log(time_deltas + 1e-6)
     
-    # Robust standardization using median and MAD
     median = np.median(time_deltas)
     mad = np.median(np.abs(time_deltas - median))
     time_deltas = (time_deltas - median) / (mad + 1e-6)
@@ -119,12 +116,10 @@ class DiffusionLikelihoodEstimator(nn.Module):
         self.hidden_dim = hidden_dim
         self.num_steps = num_steps
         
-        # Event & Time Embedding with LayerNorm
         self.event_emb = nn.Embedding(num_event_types + 1, hidden_dim, padding_idx=num_event_types)
         self.time_proj = nn.Linear(1, hidden_dim)
         self.input_norm = nn.LayerNorm(hidden_dim)
         
-        # History Encoder (attention-based, no RNN)
         self.history_attn = nn.MultiheadAttention(hidden_dim, num_heads=4, batch_first=True, dropout=0.1)
         self.history_norm = nn.LayerNorm(hidden_dim)
         
@@ -135,7 +130,6 @@ class DiffusionLikelihoodEstimator(nn.Module):
             nn.Linear(hidden_dim * 2, hidden_dim)
         )
         
-        # Diffusion Components
         self.betas = torch.linspace(1e-4, 0.02, num_steps)
         self.alphas = 1. - self.betas
         self.alphas_bar = torch.cumprod(self.alphas, dim=0)
@@ -146,7 +140,6 @@ class DiffusionLikelihoodEstimator(nn.Module):
             nn.Linear(hidden_dim, hidden_dim),
         )
         
-        # Denoising Network - More expressive
         self.denoise_mlp = nn.Sequential(
             nn.Linear(1 + hidden_dim + hidden_dim, hidden_dim * 2),
             nn.SiLU(),
@@ -162,48 +155,36 @@ class DiffusionLikelihoodEstimator(nn.Module):
     def encode_history(self, event_seq, dt_seq, event_mask=None):
         """
         Encode history with optional event masking for perturbation
-        event_mask: (B, S) binary mask, 0 means mask out
         """
         batch_size, seq_len = event_seq.shape
         
-        # Apply masking (replace masked events with padding idx)
         if event_mask is not None:
             event_seq = event_seq * event_mask.long() + (1 - event_mask.long()) * self.num_event_types
         
-        # Embed with normalization
-        h_emb = self.event_emb(event_seq)  # (B, S, H)
-        t_emb = self.time_proj(dt_seq.unsqueeze(-1))  # (B, S, H)
+        h_emb = self.event_emb(event_seq)
+        t_emb = self.time_proj(dt_seq.unsqueeze(-1))
         
-        features = self.input_norm(h_emb + t_emb)  # (B, S, H)
+        features = self.input_norm(h_emb + t_emb)
         
-        # Self-attention over history
         attn_out, _ = self.history_attn(features, features, features)
         features = self.history_norm(features + attn_out)
         
-        # MLP
         features = features + self.history_mlp(features)
         
-        # Aggregate (mean pooling)
         if event_mask is not None:
-            # Masked mean
-            mask_expanded = event_mask.unsqueeze(-1)  # (B, S, 1)
+            mask_expanded = event_mask.unsqueeze(-1)
             context = (features * mask_expanded).sum(dim=1) / (mask_expanded.sum(dim=1) + 1e-8)
         else:
-            context = features.mean(dim=1)  # (B, H)
+            context = features.mean(dim=1)
         
         return context
     
     def forward(self, event_seq, dt_seq, target_dt, event_mask=None):
-        """
-        Standard forward pass for training
-        """
         batch_size = event_seq.shape[0]
         device = event_seq.device
         
-        # Encode history
         condition = self.encode_history(event_seq, dt_seq, event_mask)
         
-        # Diffusion forward
         t = torch.randint(0, self.num_steps, (batch_size,), device=device).long()
         
         target_dt = target_dt.view(-1, 1)
@@ -222,21 +203,15 @@ class DiffusionLikelihoodEstimator(nn.Module):
         return loss
     
     def compute_likelihood(self, event_seq, dt_seq, target_dt, event_mask=None, num_samples=50):
-        """
-        Estimate log-likelihood using diffusion model
-        Higher likelihood = better prediction
-        """
         batch_size = event_seq.shape[0]
         device = event_seq.device
         
         with torch.no_grad():
             condition = self.encode_history(event_seq, dt_seq, event_mask)
             
-            # Sample multiple noises for better estimation
             log_likelihoods = []
             
             for _ in range(num_samples):
-                # Use final timestep for likelihood estimation
                 t = torch.full((batch_size,), self.num_steps - 1, device=device).long()
                 
                 target_dt_exp = target_dt.view(-1, 1)
@@ -249,197 +224,35 @@ class DiffusionLikelihoodEstimator(nn.Module):
                 net_in = torch.cat([x_t, t_emb, condition], dim=-1)
                 pred_noise = self.denoise_mlp(net_in)
                 
-                # Reconstruction error as proxy for likelihood
                 error = F.mse_loss(pred_noise, noise, reduction='none').mean(dim=1)
                 log_likelihood = -error
                 log_likelihoods.append(log_likelihood)
             
-            # Average over samples
             log_likelihood = torch.stack(log_likelihoods).mean(dim=0)
             
-        return log_likelihood  # (B,)
+        return log_likelihood
 # ==========================================
 # 3. Granger Causality Test (Stage 2)
 # ==========================================
 
-# def granger_causality_test(model, dataloader, num_event_types, device, 
-#                                    significance_level=0.05, 
-#                                    num_likelihood_samples=50,
-#                                    use_adaptive_threshold=True,
-#                                    top_k_percent=0.3):
-#     """
-#     Improved Granger causality test with adaptive thresholding
-#     """
-#     print("Stage 2: Improved Granger Causality Testing...", flush=True)
-    
-#     model.eval()
-    
-#     # Pre-collect all data for efficiency
-#     all_samples = {i: {'event_seq': [], 'dt_seq': [], 'target_dt': []} 
-#                    for i in range(num_event_types)}
-    
-#     # Group by target type
-#     for batch in dataloader:
-#         event_seq, dt_seq, target_dt, target_types = [b.to(device) for b in batch]
-        
-#         for target_type in range(num_event_types):
-#             mask = (target_types == target_type)
-#             if mask.sum() > 0:
-#                 all_samples[target_type]['event_seq'].append(event_seq[mask])
-#                 all_samples[target_type]['dt_seq'].append(dt_seq[mask])
-#                 all_samples[target_type]['target_dt'].append(target_dt[mask])
-    
-#     # Concatenate
-#     for target_type in range(num_event_types):
-#         if len(all_samples[target_type]['event_seq']) > 0:
-#             all_samples[target_type]['event_seq'] = torch.cat(all_samples[target_type]['event_seq'])
-#             all_samples[target_type]['dt_seq'] = torch.cat(all_samples[target_type]['dt_seq'])
-#             all_samples[target_type]['target_dt'] = torch.cat(all_samples[target_type]['target_dt'])
-    
-#     causality_scores = np.zeros((num_event_types, num_event_types))
-#     p_values = np.ones((num_event_types, num_event_types))
-    
-#     # Test all pairs
-#     for source_type in range(num_event_types):
-#         print(f"  Testing source={source_type}", flush=True)
-        
-#         for target_type in range(num_event_types):
-#             if source_type == target_type:
-#                 continue
-            
-#             if len(all_samples[target_type]['event_seq']) == 0:
-#                 continue
-            
-#             event_seq = all_samples[target_type]['event_seq']
-#             dt_seq = all_samples[target_type]['dt_seq']
-#             target_dt = all_samples[target_type]['target_dt']
-            
-#             # Check if source appears in history
-#             source_appears = (event_seq == source_type).any(dim=1)
-#             if source_appears.sum() < 5:  # Need minimum samples
-#                 continue
-            
-#             # Filter to samples where source appears
-#             event_seq = event_seq[source_appears]
-#             dt_seq = dt_seq[source_appears]
-#             target_dt = target_dt[source_appears]
-            
-#             # Batch processing for speed
-#             batch_size = 128
-#             ll_with_list = []
-#             ll_without_list = []
-            
-#             for i in range(0, len(event_seq), batch_size):
-#                 batch_event = event_seq[i:i+batch_size]
-#                 batch_dt = dt_seq[i:i+batch_size]
-#                 batch_target = target_dt[i:i+batch_size]
-                
-#                 event_mask_without = (batch_event != source_type).float()
-                
-#                 # WITH source
-#                 ll_with = model.compute_likelihood(
-#                     batch_event, batch_dt, batch_target,
-#                     event_mask=None,
-#                     num_samples=num_likelihood_samples
-#                 )
-                
-#                 # WITHOUT source
-#                 ll_without = model.compute_likelihood(
-#                     batch_event, batch_dt, batch_target,
-#                     event_mask=event_mask_without,
-#                     num_samples=num_likelihood_samples
-#                 )
-                
-#                 ll_with_list.append(ll_with.cpu().numpy())
-#                 ll_without_list.append(ll_without.cpu().numpy())
-            
-#             likelihood_with = np.concatenate(ll_with_list)
-#             likelihood_without = np.concatenate(ll_without_list)
-            
-#             # Compute improvement
-#             improvement = likelihood_with - likelihood_without
-#             mean_improvement = improvement.mean()
-            
-#             # Statistical test with more lenient criteria
-#             from scipy.stats import ttest_rel, wilcoxon
-            
-#             if len(improvement) > 1:
-#                 # Use both t-test and effect size
-#                 t_stat, p_val = ttest_rel(likelihood_with, likelihood_without, alternative='greater')
-                
-#                 # Cohen's d (effect size)
-#                 cohens_d = mean_improvement / (improvement.std() + 1e-8)
-                
-#                 causality_scores[source_type, target_type] = mean_improvement
-#                 p_values[source_type, target_type] = p_val
-                
-#                 # More lenient criterion: either significant p-value OR large effect size
-#                 # This helps with recall
-    
-#     # Adaptive thresholding for better recall
-#     if use_adaptive_threshold:
-#         # Method 1: Top-k% edges by score
-#         flat_scores = causality_scores.flatten()
-#         threshold = np.percentile(flat_scores[flat_scores > 0], (1 - top_k_percent) * 100)
-        
-#         # Method 2: Combined criterion
-#         # Accept edge if (score > threshold) OR (p-value < significance AND score > 0)
-#         final_matrix = np.zeros_like(causality_scores)
-#         for i in range(num_event_types):
-#             for j in range(num_event_types):
-#                 if i == j:
-#                     continue
-#                 score = causality_scores[i, j]
-#                 p_val = p_values[i, j]
-                
-#                 # Relaxed criterion
-#                 if score > threshold or (p_val < significance_level and score > 0):
-#                     final_matrix[i, j] = score
-        
-#         return final_matrix
-#     else:
-#         # Original method
-#         for i in range(num_event_types):
-#             for j in range(num_event_types):
-#                 if p_values[i, j] >= significance_level or causality_scores[i, j] <= 0:
-#                     causality_scores[i, j] = 0
-        
-#         return causality_scores
-    
-    
 def granger_causality_test(model, dataloader, num_event_types, device, 
                            significance_level=0.05, num_likelihood_samples=100):
-    """
-    Perform pairwise Granger causality test using controlled perturbations
-    
-    For each pair (source, target):
-    1. Compute likelihood of target WITH source events
-    2. Compute likelihood of target WITHOUT source events (mask out)
-    3. If likelihood difference is significant, edge exists
-    
-    Uses both statistical significance AND effect size for better recall
-    """
-    print("Stage 2: Granger Causality Testing with Controlled Perturbations...", flush=True)
+    print("Stage 2: Granger Causality Testing...", flush=True)
     
     model.eval()
-    
-    # Initialize causality matrix
     causality_scores = np.zeros((num_event_types, num_event_types))
     
-    # Test each potential edge
     for source_type in range(num_event_types):
         for target_type in range(num_event_types):
             if source_type == target_type:
                 continue
             
-            # Collect samples where target appears
             likelihood_with = []
             likelihood_without = []
             
             for batch in dataloader:
                 event_seq, dt_seq, target_dt, target_types = [b.to(device) for b in batch]
                 
-                # Filter: only consider samples where target is target_type
                 mask = (target_types == target_type)
                 if mask.sum() == 0:
                     continue
@@ -448,17 +261,14 @@ def granger_causality_test(model, dataloader, num_event_types, device,
                 dt_seq = dt_seq[mask]
                 target_dt = target_dt[mask]
                 
-                # Create event mask: mask out source_type
-                event_mask_without = (event_seq != source_type).float()  # (B, S)
+                event_mask_without = (event_seq != source_type).float()
                 
-                # Likelihood WITH source
                 ll_with = model.compute_likelihood(
                     event_seq, dt_seq, target_dt, 
                     event_mask=None,
                     num_samples=num_likelihood_samples
                 )
                 
-                # Likelihood WITHOUT source (masked)
                 ll_without = model.compute_likelihood(
                     event_seq, dt_seq, target_dt,
                     event_mask=event_mask_without,
@@ -474,30 +284,22 @@ def granger_causality_test(model, dataloader, num_event_types, device,
             likelihood_with = np.concatenate(likelihood_with)
             likelihood_without = np.concatenate(likelihood_without)
             
-            # Compute improvement: LL(with) - LL(without)
             improvement_array = likelihood_with - likelihood_without
             improvement = improvement_array.mean()
             
-            # Statistical test (paired t-test) + Effect Size
             from scipy.stats import ttest_rel
             if len(likelihood_with) > 1:
                 t_stat, p_value = ttest_rel(likelihood_with, likelihood_without, alternative='greater')
                 
-                # Compute Cohen's d (effect size)
                 std_diff = improvement_array.std() + 1e-8
                 cohens_d = improvement / std_diff
                 
-                # Relaxed criterion: Accept if either condition is met:
-                # 1. Statistically significant with positive improvement
-                # 2. Large effect size (Cohen's d > 0.5) with positive improvement
-                # 3. Moderate effect size (Cohen's d > 0.3) AND p-value < 0.2
                 if improvement > 0:
                     if (p_value < significance_level or 
                         cohens_d > 0.5 or 
                         (cohens_d > 0.3 and p_value < 0.2)):
                         causality_scores[source_type, target_type] = improvement
             else:
-                # Not enough samples
                 causality_scores[source_type, target_type] = 0
         
         print(f"  Tested source={source_type}", flush=True)
@@ -505,20 +307,16 @@ def granger_causality_test(model, dataloader, num_event_types, device,
     return causality_scores
 
 # ==========================================
-# Fast Granger Causality Test (Vectorized)
+# Fast Granger Causality Test
 # ==========================================
 def granger_causality_test_fast(model, dataloader, num_event_types, device,
                                 significance_level=0.05,
                                 num_likelihood_samples=100,
                                 min_support=10):
-    """
-    Safe and fast version with effect size criterion and minimum support
-    """
-    print("Stage 2: Safe Granger Causality Testing...", flush=True)
+    print("Stage 2: Granger Causality Testing (Fast)...", flush=True)
     
     model.eval()
     
-    # Step 1: Collect all data
     print("  Collecting data...", flush=True)
     all_event_seq = []
     all_dt_seq = []
@@ -695,28 +493,6 @@ def granger_causality_test_fast(model, dataloader, num_event_types, device,
         delattr(granger_causality_test_fast, 'effect_sizes')
     
     return causality_scores
-
-# ==========================================
-# Further optimization: Multi-GPU support
-# ==========================================
-def granger_causality_test_multi_gpu(model, dataloader, num_event_types, device,
-                                     significance_level=0.05,
-                                     num_likelihood_samples=20):
-    """
-    Multi-GPU accelerated version
-    """
-    import torch.multiprocessing as mp
-    from torch.nn.parallel import DataParallel
-    
-    if torch.cuda.device_count() > 1:
-        print(f"Using {torch.cuda.device_count()} GPUs", flush=True)
-        model = DataParallel(model)
-    
-    # Same logic as fast version but with DataParallel
-    # This automatically distributes batches across GPUs
-    
-    return granger_causality_test(model, dataloader, num_event_types, device, significance_level, num_likelihood_samples)
-
 
 # ==========================================
 # 4. Main Function
